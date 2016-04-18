@@ -13,6 +13,15 @@ double max(double a,double b)
 	else
 		return b;
 }
+double min(double a,double b)
+{
+	if(a>b)
+		return b;
+	else
+		return a;
+}
+
+
 
 double ** do_euler_explicit(int N, int M, float r, double sigma, double K, double S_max, double T)
 {
@@ -32,7 +41,7 @@ double ** do_euler_explicit(int N, int M, float r, double sigma, double K, doubl
 	// Build Example Matrix
 	double xbar = log(S_max);
 	double delta_t = T/M;
-	double h = xbar*2/(N-1.0);
+	double h = xbar*2/(N+1.0);
 	double beta = r-0.5*sigma*sigma;
 	double k1 = delta_t*sigma*sigma/(2*h*h)-beta*delta_t/(2*h);
 	double k2 = 1-delta_t*sigma*sigma/(h*h)-delta_t*r;
@@ -108,14 +117,16 @@ double ** do_euler_explicit(int N, int M, float r, double sigma, double K, doubl
 		{
 			/* boundary condion two: if price is too large, use the put-call parity */
 			double optionPrice = gsl_vector_get(s_v_new, i);
-			//std::cout<<std::endl;
-			//std::cout<<"** put price!!= "<<optionPrice + K*exp(-r*(t_j+delta_t))-exp(-xbar+i*h)<<"**";
-			//if ((optionPrice - (exp(-xbar+i*h)-K*exp(-r*(t_j*delta_t))) >2))
-			if ((optionPrice >exp(-xbar+i*h)))
-				gsl_vector_set(s_v_new, i, (exp(-xbar+i*h)-K*exp(-r*(t_j*delta_t))));
+			
+			if (i==(N-1))
+				gsl_vector_set(s_v_new, i,(exp(-xbar+i*h)-K*exp(-r*(t_j*delta_t))) );
 			
 			if (optionPrice<0.01)
 				gsl_vector_set(s_v_new, i, 0);
+			
+			if (optionPrice>exp(-xbar+i*h))
+				gsl_vector_set(s_v_new, i, exp(-xbar+i*h));
+			
 			
 			std::cout<<gsl_vector_get(s_v_new, i)<<" ";
 			
@@ -160,7 +171,7 @@ double ** do_euler_implicitet(int N, int M, float r, double sigma, double K, dou
 	// Build Example Matrix
 	double xbar = log(S_max);
 	double delta_t = T/M;
-	double h = xbar*2/(N-1.0);
+	double h = xbar*2/(N+1.0);
 	double beta = r-0.5*sigma*sigma;
 	double k1 = -delta_t*sigma*sigma/(2*h*h)+beta*delta_t/(2*h);
 	double k2 = 1+delta_t*sigma*sigma/(h*h)+delta_t*r;
@@ -243,11 +254,13 @@ double ** do_euler_implicitet(int N, int M, float r, double sigma, double K, dou
 			//std::cout<<"** put price!!= "<<optionPrice + K*exp(-r*(t_j+delta_t))-exp(-xbar+i*h)<<"**";
 			//if ((optionPrice - (exp(-xbar+i*h)-K*exp(-r*(t_j*delta_t))) >2))
 			//if ((optionPrice >exp(-xbar+i*h)))
-			//  gsl_vector_set(s_v_new, i, (exp(-xbar+i*h)-K*exp(-r*(t_j*delta_t))));
+			//	gsl_vector_set(s_v_new, i, (exp(-xbar+i*h)-K*exp(-r*(t_j*delta_t))));
 			if (i==(N-1))
 				gsl_vector_set(s_v_new, i,(exp(-xbar+i*h)-K*exp(-r*(t_j*delta_t))) );
 			if (optionPrice<0.01)
 				gsl_vector_set(s_v_new, i, 0);
+			if (optionPrice>exp(-xbar+i*h))
+				gsl_vector_set(s_v_new, i, exp(-xbar+i*h));
 			
 			std::cout<<gsl_vector_get(s_v_new, i)<<" ";
 			
@@ -293,7 +306,7 @@ double ** do_crank_nicolson(int N, int M, float r, double sigma, double K, doubl
 	// Build Example Matrix
 	double xbar = log(S_max);
 	double delta_t = T/M;
-	double h = xbar*2/(N-1.0);
+	double h = xbar*2/(N);
 	double beta = r-0.5*sigma*sigma;
 	double k1 = -sigma*sigma/(4*h*h)+beta/(4*h);
 	double k2 = 1.0/delta_t+sigma*sigma/(2*h*h)+r/2;
@@ -303,19 +316,25 @@ double ** do_crank_nicolson(int N, int M, float r, double sigma, double K, doubl
 	double k3star = sigma*sigma/(4*h*h)+beta/(4*h);
 	gsl_matrix * t_m = gsl_matrix_alloc(N,N);
 	gsl_matrix_set_zero(t_m);
+	gsl_matrix * t_n = gsl_matrix_alloc(N,N);
+	gsl_matrix_set_zero(t_n);
+	
 	for(int i = 0; i < N; i++)
 	{
 		
 		gsl_matrix_set(t_m, i, i, k2);
+		gsl_matrix_set(t_n, i, i, k2star);
 	}
 	for(int i = 0; i < N-1; i++)
 	{
-		
+		gsl_matrix_set(t_n, i+1, i, k1star);
 		gsl_matrix_set(t_m, i+1, i, k1);
 	}
 	for(int i = 0; i < N-1; i++)
+	{
+		gsl_matrix_set(t_n, i, i+1, k3star);
 		gsl_matrix_set(t_m, i, i+1, k3);
-	
+	}
 	// print
 	for(int i = 0; i < N; i++)
 	{
@@ -327,12 +346,14 @@ double ** do_crank_nicolson(int N, int M, float r, double sigma, double K, doubl
 	// Solution Vector
 	gsl_vector * s_v_old = gsl_vector_alloc(N);
 	gsl_vector * s_v_new = gsl_vector_alloc(N);
+	gsl_vector * s_v_temp = gsl_vector_alloc(N);
 	
 	gsl_vector_set_zero(s_v_old);
 	gsl_vector_set_zero(s_v_new);
+	gsl_vector_set_zero(s_v_temp);
 	
 	//example initial value
-	double d[N];
+	
 	for(int i=0;i<N;i++)
 	{
 		double temp;
@@ -341,19 +362,11 @@ double ** do_crank_nicolson(int N, int M, float r, double sigma, double K, doubl
 			temp=exp(sPriceTemp)-K;
 		else
 			temp=0;
-		d[i]=temp;
-	}
-	
-	
-	gsl_vector_set(s_v_old, 0, k2star*d[0]+k3star*d[1]);
-	gsl_vector_set(s_v_old, N-1,k1star*d[N-2]+k2star*d[N-1]+k3star*(exp(xbar)-K*exp(-r*T)));
-	
-	for(int i=1;i<N-1;i++)
-	{
-		double temp;
-		temp = k1star*d[i-1]+k2star*d[i]+k3star*d[i+1];
 		gsl_vector_set(s_v_old, i, temp);
 	}
+	
+	//gsl_vector_set(s_v_old, 0, k2star*d[0]+k3star*d[1]);
+	//gsl_vector_set(s_v_old, N-1,k1star*d[N-2]+k2star*d[N-1]+k3star*(exp(xbar)-K*exp(-r*T)));
 	
 	std::cout<<"New\n";
 	for(int i = 0; i < N; i++)
@@ -371,51 +384,40 @@ double ** do_crank_nicolson(int N, int M, float r, double sigma, double K, doubl
 		std::cout<<gsl_vector_get(s_v_old, i)<<" ";
 	std::cout<<std::endl;
 	
+	int s=0;
+	gsl_permutation * p = gsl_permutation_alloc (N);
+	gsl_linalg_LU_decomp (t_m, p, &s);
 	// this is the loop that steps through time
 	for(int t_j = 0; t_j < M; t_j++)
 	{
+		gsl_blas_dgemv(CblasNoTrans, 1.0, t_n, s_v_old, 0.0, s_v_temp);
+		gsl_vector_set(s_v_temp, N-1,gsl_vector_get(s_v_temp, N-1)+k3star*(exp(xbar)-K*exp(-r*T)));
+		gsl_linalg_LU_solve (t_m, p, s_v_temp, s_v_new);
 		
-		int s;
-		gsl_permutation * p = gsl_permutation_alloc (N);
-		gsl_linalg_LU_decomp (t_m, p, &s);
-		gsl_linalg_LU_solve (t_m, p, s_v_old, s_v_new);
-		gsl_permutation_free (p);
 		
+		//gsl_permutation_free (p);
+		
+		std::cout<<"new:"<<std::endl;
 		for(int i = 0; i < N; i++)
 		{
 			/* boundary condion two: if price is too large, use the put-call parity */
 			double optionPrice = gsl_vector_get(s_v_new, i);
+			std::cout<<gsl_vector_get(s_v_new, i)<<" ";
 			
+			if (optionPrice<0.001)
+				gsl_vector_set(s_v_new, i, 0);
+			//if (optionPrice>exp(-xbar+i*h))
+			//	gsl_vector_set(s_v_new, i, exp(-xbar+i*h));
 			if (i==(N-1))
 				gsl_vector_set(s_v_new, i,(exp(-xbar+i*h)-K*exp(-r*(t_j*delta_t))) );
-			if (optionPrice<0.01)
-				gsl_vector_set(s_v_new, i, 0);
 			
 			std::cout<<gsl_vector_get(s_v_new, i)<<" ";
 			
 		}
-		std::cout<<std::endl;
+		
 		
 		memcpy(result_table[t_j], s_v_new->data, s_v_new->size*sizeof(double));
-		
-		
-		
-		for(int ii=0;ii<N;ii++)
-			d[ii]=gsl_vector_get(s_v_new, ii);
-		
-		
-		gsl_vector_set(s_v_old, 0, k2star*d[0]+k3star*d[1]);
-		gsl_vector_set(s_v_old, N-1,k1star*d[N-2]+k2star*d[N-1]+k3star*(exp(xbar)-K*exp(-r*T)));
-		
-		for(int i=1;i<N-1;i++)
-		{
-			double temp;
-			temp = k1star*d[i-1]+k2star*d[i]+k3star*d[i+1];
-			gsl_vector_set(s_v_old, i, temp);
-		}
-		
-		
-		//gsl_vector_swap(s_v_new, s_v_old);
+		gsl_vector_swap(s_v_new, s_v_old);
 	}
 	
 	std::cout<<std::endl;
