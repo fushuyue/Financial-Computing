@@ -41,11 +41,11 @@ double ** do_euler_explicit(int N, int M, float r, double sigma, double K, doubl
 	// Build Example Matrix
 	double xbar = log(S_max);
 	double delta_t = T/M;
-	double h = xbar*2/(N+1.0);
+	double h = xbar*2.0/(N);
 	double beta = r-0.5*sigma*sigma;
-	double k1 = delta_t*sigma*sigma/(2*h*h)-beta*delta_t/(2*h);
+	double k1 = delta_t*sigma*sigma/(2*h*h)-beta*delta_t/(2.0*h);
 	double k2 = 1-delta_t*sigma*sigma/(h*h)-delta_t*r;
-	double k3 = delta_t*sigma*sigma/(2*h*h)+beta*delta_t/(2*h);
+	double k3 = delta_t*sigma*sigma/(2*h*h)+beta*delta_t/(2.0*h);
 	
 	gsl_matrix * t_m = gsl_matrix_alloc(N,N);
 	gsl_matrix_set_zero(t_m);
@@ -118,14 +118,14 @@ double ** do_euler_explicit(int N, int M, float r, double sigma, double K, doubl
 			/* boundary condion two: if price is too large, use the put-call parity */
 			double optionPrice = gsl_vector_get(s_v_new, i);
 			
-			if (i==(N-1))
-				gsl_vector_set(s_v_new, i,(exp(-xbar+i*h)-K*exp(-r*(t_j*delta_t))) );
-			
-			if (optionPrice<0.01)
+			if (optionPrice<0.00001)
 				gsl_vector_set(s_v_new, i, 0);
 			
 			if (optionPrice>exp(-xbar+i*h))
 				gsl_vector_set(s_v_new, i, exp(-xbar+i*h));
+			
+			if (i==(N-1))
+				gsl_vector_set(s_v_new, i,(exp(-xbar+i*h)-K*exp(-r*(t_j*delta_t))) );
 			
 			
 			std::cout<<gsl_vector_get(s_v_new, i)<<" ";
@@ -171,7 +171,7 @@ double ** do_euler_implicitet(int N, int M, float r, double sigma, double K, dou
 	// Build Example Matrix
 	double xbar = log(S_max);
 	double delta_t = T/M;
-	double h = xbar*2/(N+1.0);
+	double h = xbar*2/(N);
 	double beta = r-0.5*sigma*sigma;
 	double k1 = -delta_t*sigma*sigma/(2*h*h)+beta*delta_t/(2*h);
 	double k2 = 1+delta_t*sigma*sigma/(h*h)+delta_t*r;
@@ -236,31 +236,27 @@ double ** do_euler_implicitet(int N, int M, float r, double sigma, double K, dou
 		std::cout<<gsl_vector_get(s_v_old, i)<<" ";
 	std::cout<<std::endl;
 	
+	int s;
+	gsl_permutation * p = gsl_permutation_alloc (N);
+	gsl_linalg_LU_decomp (t_m, p, &s);
+	
 	// this is the loop that steps through time
 	for(int t_j = 0; t_j < M; t_j++)
 	{
 		
-		int s;
-		gsl_permutation * p = gsl_permutation_alloc (N);
-		gsl_linalg_LU_decomp (t_m, p, &s);
 		gsl_linalg_LU_solve (t_m, p, s_v_old, s_v_new);
-		gsl_permutation_free (p);
+		//gsl_permutation_free (p);
 		
 		for(int i = 0; i < N; i++)
 		{
 			/* boundary condion two: if price is too large, use the put-call parity */
 			double optionPrice = gsl_vector_get(s_v_new, i);
-			//std::cout<<std::endl;
-			//std::cout<<"** put price!!= "<<optionPrice + K*exp(-r*(t_j+delta_t))-exp(-xbar+i*h)<<"**";
-			//if ((optionPrice - (exp(-xbar+i*h)-K*exp(-r*(t_j*delta_t))) >2))
-			//if ((optionPrice >exp(-xbar+i*h)))
-			//	gsl_vector_set(s_v_new, i, (exp(-xbar+i*h)-K*exp(-r*(t_j*delta_t))));
-			if (i==(N-1))
-				gsl_vector_set(s_v_new, i,(exp(-xbar+i*h)-K*exp(-r*(t_j*delta_t))) );
-			if (optionPrice<0.01)
+			if (optionPrice<0.00001)
 				gsl_vector_set(s_v_new, i, 0);
 			if (optionPrice>exp(-xbar+i*h))
 				gsl_vector_set(s_v_new, i, exp(-xbar+i*h));
+			if (i==(N-1))
+				gsl_vector_set(s_v_new, i,(exp(-xbar+i*h)-K*exp(-r*(t_j*delta_t))) );
 			
 			std::cout<<gsl_vector_get(s_v_new, i)<<" ";
 			
@@ -385,14 +381,20 @@ double ** do_crank_nicolson(int N, int M, float r, double sigma, double K, doubl
 	std::cout<<std::endl;
 	
 	int s=0;
+	gsl_matrix*t_m_inverse=gsl_matrix_alloc(N,N);
+	gsl_matrix_set_zero(t_m_inverse);
 	gsl_permutation * p = gsl_permutation_alloc (N);
 	gsl_linalg_LU_decomp (t_m, p, &s);
+	gsl_linalg_LU_invert (t_m, p, t_m_inverse);
+	
 	// this is the loop that steps through time
 	for(int t_j = 0; t_j < M; t_j++)
 	{
 		gsl_blas_dgemv(CblasNoTrans, 1.0, t_n, s_v_old, 0.0, s_v_temp);
 		gsl_vector_set(s_v_temp, N-1,gsl_vector_get(s_v_temp, N-1)+k3star*(exp(xbar)-K*exp(-r*T)));
-		gsl_linalg_LU_solve (t_m, p, s_v_temp, s_v_new);
+		
+		gsl_blas_dgemv(CblasNoTrans, 1.0, t_m_inverse, s_v_temp, 0.0, s_v_new);
+		//gsl_linalg_LU_solve (t_m, p, s_v_temp, s_v_new);
 		
 		
 		//gsl_permutation_free (p);
@@ -404,7 +406,7 @@ double ** do_crank_nicolson(int N, int M, float r, double sigma, double K, doubl
 			double optionPrice = gsl_vector_get(s_v_new, i);
 			std::cout<<gsl_vector_get(s_v_new, i)<<" ";
 			
-			if (optionPrice<0.001)
+			if (optionPrice<0.00001)
 				gsl_vector_set(s_v_new, i, 0);
 			//if (optionPrice>exp(-xbar+i*h))
 			//	gsl_vector_set(s_v_new, i, exp(-xbar+i*h));
